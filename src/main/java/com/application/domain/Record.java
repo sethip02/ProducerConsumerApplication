@@ -19,7 +19,7 @@ public class Record {
         return "Record{" +
                 "id='" + id + '\'' +
                 ", asOf=" + asOf.toString() +
-                ", payload=" + payload.asText() +
+                ", payload=" + payload.toString() +
                 '}';
     }
 }

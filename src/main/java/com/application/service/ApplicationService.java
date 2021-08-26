@@ -4,27 +4,30 @@ import com.application.domain.Chunk;
 import com.application.domain.Record;
 import com.application.domain.RecordComparator;
 import com.application.exception.UploadException;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class ApplicationService {
     static ReentrantLock reentrantLock = null;
     static UUID activeBatchUUID = null;
     RecordComparator recordComparator = new RecordComparator();
-    static Map<String, Long> originalPriceList = new ConcurrentHashMap<>();
-    static Map<String, Long> cachedPriceList = null;
+    static Map<String, Double> originalPriceList = new ConcurrentHashMap<>();
+    static Map<String, Double> cachedPriceList = new HashMap<>();
 
     public ApplicationService(){
-        this.reentrantLock = new ReentrantLock(true);
+        reentrantLock = new ReentrantLock(true);
 
     }
 
     public  UUID startBatchRun() throws InterruptedException {
         if(reentrantLock.tryLock(Integer.MAX_VALUE, TimeUnit.SECONDS)){
-            return UUID.randomUUID();
+            activeBatchUUID = UUID.randomUUID();
+            return activeBatchUUID;
         }
         else{
             return null;
@@ -46,10 +49,10 @@ public class ApplicationService {
         groupedRecords.forEach((s, l) -> {
             l.sort(recordComparator);
             Record latestRecord = l.get(0);
-            cachedPriceList.put(latestRecord.getId(), latestRecord.getPayload().get("Price").asLong());
+            cachedPriceList.put(latestRecord.getId(), latestRecord.getPayload().get("Price").asDouble());
 
         });
-
+        log.info("Chunk uploaded successfully");
         reentrantLock.unlock();
 
 
@@ -63,17 +66,22 @@ public class ApplicationService {
             cachedPriceList.forEach((k, v) -> {
                 originalPriceList.put(k, v);
             });
+            cachedPriceList.clear();
         }
         else if("cancel".equalsIgnoreCase(command)){
             cachedPriceList = null;
         }
 
+        log.info("Latest price list: ");
+        originalPriceList.forEach((k, v) -> {
+            log.info("Value of key "+ k + " is "+ v);
+        });
         activeBatchUUID = null;
         reentrantLock.unlock();
         return null;
     }
 
-    public Long getLatestPriceOfInstrument(String consumerThreadName, String id){
+    public Double getLatestPriceOfInstrument(String consumerThreadName, String id){
         return originalPriceList.get(id);
     }
 }
