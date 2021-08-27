@@ -24,7 +24,8 @@ public class ApplicationService {
 
     }
 
-    public  UUID startBatchRun() throws InterruptedException {
+    public  UUID startBatchRun(String producerName) throws InterruptedException {
+        log.info(producerName + " is trying to acquire lock.");
         if(reentrantLock.tryLock(Integer.MAX_VALUE, TimeUnit.SECONDS)){
             activeBatchUUID = UUID.randomUUID();
             return activeBatchUUID;

@@ -12,14 +12,15 @@ import java.util.concurrent.Callable;
 public class ConsumerThread implements Callable {
     ApplicationService applicationService;
     String  consumerThreadName = "Consumer " + Thread.currentThread().getId();
-
-    public  ConsumerThread(ApplicationService applicationService){
+    int randomInstrumentId;
+    public  ConsumerThread(int randomInstrumentId, ApplicationService applicationService){
+        this.randomInstrumentId = randomInstrumentId;
         this.applicationService = applicationService;
     }
 
     @Override
     public String call() {
-        int randomInstrumentId = (new Random()).nextInt(10) + 1;
+
 
         log.info("Accessing the id: "+ randomInstrumentId);
         LocalDateTime start = LocalDateTime.now();

@@ -12,21 +12,22 @@ import java.util.*;
 import java.util.concurrent.Callable;
 
 @Slf4j
-public class ProducerThread implements Callable {
+public class ProducerThread implements Callable<String> {
     ApplicationService applicationService;
     UUID batchID;
     String  producerThreadName = "Producer " + Thread.currentThread().getId();
-    int numOfChunksToUpload = ((new Random()).nextInt(10)+ 1)*10;
+    int numOfChunksToUpload;
     Random priceGenerator = new Random();
 
-    public ProducerThread(ApplicationService s){
+    public ProducerThread(int numOfChunksToUpload, ApplicationService s){
+        this.numOfChunksToUpload = numOfChunksToUpload;
         this.applicationService = s;
     }
 
     @Override
     public String call(){
             try{
-                batchID = applicationService.startBatchRun();
+                batchID = applicationService.startBatchRun(producerThreadName);
             } catch (InterruptedException e) {
                 log.error("Producer thread "+ producerThreadName+" interuppted while starting the batch run.");
             }

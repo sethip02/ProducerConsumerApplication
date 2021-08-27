@@ -13,13 +13,13 @@ public class Main {
     public static void main(String[] args) {
         ApplicationService applicationService = new ApplicationService();
         ExecutorService executorService = Executors.newFixedThreadPool(2);
-        Future<String> result = executorService.submit(new ProducerThread(applicationService));
+        Future<String> result = executorService.submit(new ProducerThread(5, applicationService));
         while(true){
             if(result.isDone()){
                 break;
             }
         }
-        executorService.submit(new ConsumerThread(applicationService));
+        executorService.submit(new ConsumerThread(1, applicationService));
         executorService.shutdown();
         try {
             System.out.println("Result of producer thread: "+result.get());
