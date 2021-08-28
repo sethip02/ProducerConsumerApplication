@@ -25,6 +25,19 @@ public class ProducerThread implements Callable<String> {
     Random priceGenerator = new Random();
     int numOfRecordsInAChunk;
 
+    /***
+     * ProducerThread constructor takes in producer name, number of chunks to be upload as part of the batch,
+     * number of records in each chunk,
+     * Time (in seconds) for which producer thread waits to acquire a lock before retrying after 500 ms,
+     * ApplicationService instance and boolean flag to specify if uploading to be performed without starting a batch run( introduced to simulate the
+     * scenario where service methods are called in wrong order).
+     * @param threadName
+     * @param numOfChunksToUpload
+     * @param numOfRecordsInAChunk
+     * @param waitTimeToAquireLock
+     * @param s
+     * @param uploadChunksWithoutStart
+     */
     public ProducerThread(String threadName, int numOfChunksToUpload, int numOfRecordsInAChunk, int waitTimeToAquireLock, ApplicationService s, boolean uploadChunksWithoutStart){
         this.producerThreadName = threadName;
         this.numOfChunksToUpload = numOfChunksToUpload;
@@ -34,6 +47,13 @@ public class ProducerThread implements Callable<String> {
         this.numOfRecordsInAChunk = numOfRecordsInAChunk;
     }
 
+    /***
+     * call method starts a batch run. And when the producer succeeds in starting the batch,
+     * it uploads all the chunks of records and then completes or cancels a batch based on upload outcome.
+     * Number of retries to start a batch run is hardcoded to 5 as of now.
+     * And after each unsuccessful batch run start request, producer thread waits for 500ms before retrying.
+     * @return batch complete or cancel outcome as a string.
+     */
     @Override
     public String call(){
             if(uploadChunksWithoutStart == false) {
@@ -46,7 +66,7 @@ public class ProducerThread implements Callable<String> {
                             } else {
                                 break;
                             }
-                            Thread.sleep(1000);
+                            Thread.sleep(500);
                             numberOfRetries--;
                         }
                     } catch (InterruptedException e) {
@@ -60,11 +80,12 @@ public class ProducerThread implements Callable<String> {
             while(numOfChunksToUpload > 0){
                 Chunk chunk = generateChunk(numOfRecordsInAChunk);
                 //If error occurs while generating chunks , then producer will stop uploading
-                if(Objects.isNull(chunk)){
-                    applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "cancel");
-                    return "Batch Cancelled";
-                }
                 try {
+                    if(Objects.isNull(chunk)){
+                        applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "cancel");
+                        return "Batch Cancelled";
+                    }
+
                     applicationService.uploadChunkOfRecords(batchID, chunk);
                 }catch(UploadException ex){
                     return "Batch Cancelled due to the error : "+ex.getMessage();
@@ -78,6 +99,11 @@ public class ProducerThread implements Callable<String> {
 
     }
 
+    /***
+     * generateChunk method is a custom chunk generator which generates random list of records.
+     * @param size - number of records in a chunk
+     * @return
+     */
     private Chunk generateChunk(int size)  {
         Random r = new Random();
         String json = "";
