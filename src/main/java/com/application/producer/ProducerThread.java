@@ -2,46 +2,73 @@ package com.application.producer;
 
 import com.application.domain.Chunk;
 import com.application.domain.Record;
+import com.application.exception.UploadException;
 import com.application.service.ApplicationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 
-@Slf4j
 public class ProducerThread implements Callable<String> {
-    ApplicationService applicationService;
-    UUID batchID;
-    String  producerThreadName = "Producer " + Thread.currentThread().getId();
-    int numOfChunksToUpload;
-    Random priceGenerator = new Random();
 
-    public ProducerThread(int numOfChunksToUpload, ApplicationService s){
+    private static final Logger log = LoggerFactory.getLogger(ProducerThread.class);
+    ApplicationService applicationService;
+    UUID batchID = UUID.randomUUID();
+    String  producerThreadName;
+    int numOfChunksToUpload;
+    int waitTimeToAquireLock;
+    boolean uploadChunksWithoutStart = false;
+    Random priceGenerator = new Random();
+    int numOfRecordsInAChunk;
+
+    public ProducerThread(String threadName, int numOfChunksToUpload, int numOfRecordsInAChunk, int waitTimeToAquireLock, ApplicationService s, boolean uploadChunksWithoutStart){
+        this.producerThreadName = threadName;
         this.numOfChunksToUpload = numOfChunksToUpload;
         this.applicationService = s;
+        this.waitTimeToAquireLock = waitTimeToAquireLock;
+        this.uploadChunksWithoutStart = uploadChunksWithoutStart;
+        this.numOfRecordsInAChunk = numOfRecordsInAChunk;
     }
 
     @Override
     public String call(){
-            try{
-                batchID = applicationService.startBatchRun(producerThreadName);
-            } catch (InterruptedException e) {
-                log.error("Producer thread "+ producerThreadName+" interuppted while starting the batch run.");
+            if(uploadChunksWithoutStart == false) {
+                    try {
+                        int numberOfRetries = 5;
+                        while (numberOfRetries > 0) {
+                            batchID = applicationService.startBatchRun(producerThreadName, waitTimeToAquireLock);
+                            if (Objects.isNull(batchID)) {
+                                log.error(producerThreadName + " has failed to start the batch run.It will wait for 1 second before retrying.");
+                            } else {
+                                break;
+                            }
+                            Thread.sleep(1000);
+                            numberOfRetries--;
+                        }
+                    } catch (InterruptedException e) {
+                        log.error("Producer thread " + producerThreadName + " interuppted while starting the batch run.");
+                    }
+                log.info(producerThreadName + " started the batch run");
+                log.info("Number of chunks to be uploaded: "+numOfChunksToUpload);
             }
 
-        log.info("Number of chunks to be uploaded: "+numOfChunksToUpload);
             //start uploading the chunks
             while(numOfChunksToUpload > 0){
-                Chunk chunk = generateChunk(20);
+                Chunk chunk = generateChunk(numOfRecordsInAChunk);
                 //If error occurs while generating chunks , then producer will stop uploading
                 if(Objects.isNull(chunk)){
                     applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "cancel");
                     return "Batch Cancelled";
                 }
-                applicationService.uploadChunkOfRecords(batchID, chunk);
+                try {
+                    applicationService.uploadChunkOfRecords(batchID, chunk);
+                }catch(UploadException ex){
+                    return "Batch Cancelled due to the error : "+ex.getMessage();
+                }
                 numOfChunksToUpload--;
             }
 

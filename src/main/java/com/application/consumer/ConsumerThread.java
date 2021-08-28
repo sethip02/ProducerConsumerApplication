@@ -9,7 +9,7 @@ import java.util.Random;
 import java.util.concurrent.Callable;
 
 @Slf4j
-public class ConsumerThread implements Callable {
+public class ConsumerThread implements Callable<String> {
     ApplicationService applicationService;
     String  consumerThreadName = "Consumer " + Thread.currentThread().getId();
     int randomInstrumentId;

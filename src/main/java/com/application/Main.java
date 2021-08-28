@@ -13,7 +13,7 @@ public class Main {
     public static void main(String[] args) {
         ApplicationService applicationService = new ApplicationService();
         ExecutorService executorService = Executors.newFixedThreadPool(2);
-        Future<String> result = executorService.submit(new ProducerThread(5, applicationService));
+        Future<String> result = executorService.submit(new ProducerThread("Producer1",5, 20, 3, applicationService, false));
         while(true){
             if(result.isDone()){
                 break;

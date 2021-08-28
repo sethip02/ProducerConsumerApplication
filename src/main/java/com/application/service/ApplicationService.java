@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApplicationService {
     static ReentrantLock reentrantLock = null;
-    static UUID activeBatchUUID = null;
+    private UUID activeBatchUUID = null;
     RecordComparator recordComparator = new RecordComparator();
     static Map<String, Double> originalPriceList = new ConcurrentHashMap<>();
     static Map<String, Double> cachedPriceList = new HashMap<>();
@@ -24,9 +24,9 @@ public class ApplicationService {
 
     }
 
-    public  UUID startBatchRun(String producerName) throws InterruptedException {
+    public  UUID startBatchRun(String producerName, int waitTimeForLock) throws InterruptedException {
         log.info(producerName + " is trying to acquire lock.");
-        if(reentrantLock.tryLock(Integer.MAX_VALUE, TimeUnit.SECONDS)){
+        if(reentrantLock.tryLock(waitTimeForLock, TimeUnit.SECONDS)){
             activeBatchUUID = UUID.randomUUID();
             return activeBatchUUID;
         }
@@ -61,6 +61,10 @@ public class ApplicationService {
     }
 
     public  String completeOrCancelBatchRun(UUID batchId, String producerThreadName, String command){
+
+        if(activeBatchUUID != batchId)
+            throw new UploadException("Batch run with the id "+ batchId + "is not active. Please check the UUID provided");
+
         if("complete".equalsIgnoreCase(command))
         {
             //copy the updates from cached list to original list
