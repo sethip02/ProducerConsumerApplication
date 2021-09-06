@@ -12,5 +12,5 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class Chunk {
-    List<Record> data = new ArrayList<>();
+    private List<Record> data = new ArrayList<>();
 }

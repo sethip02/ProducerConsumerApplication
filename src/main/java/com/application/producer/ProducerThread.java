@@ -1,5 +1,6 @@
 package com.application.producer;
 
+import com.application.constants.ProducerConstants;
 import com.application.domain.Chunk;
 import com.application.domain.Record;
 import com.application.exception.UploadException;
@@ -16,14 +17,13 @@ import java.util.concurrent.Callable;
 public class ProducerThread implements Callable<String> {
 
     private static final Logger log = LoggerFactory.getLogger(ProducerThread.class);
-    ApplicationService applicationService;
-    UUID batchID = UUID.randomUUID();
-    String  producerThreadName;
-    int numOfChunksToUpload;
-    int waitTimeToAquireLock;
-    boolean uploadChunksWithoutStart = false;
-    Random priceGenerator = new Random();
-    int numOfRecordsInAChunk;
+    private ApplicationService applicationService;
+    private UUID batchID = UUID.randomUUID();
+    private List<Chunk> chunkList ;
+    private String  producerThreadName;
+    private int waitTimeToAquireLock;
+    private boolean uploadChunksWithoutStart = false;
+    private int numOfLockAquireRetries;
 
     /***
      * ProducerThread constructor takes in producer name, number of chunks to be upload as part of the batch,
@@ -32,19 +32,17 @@ public class ProducerThread implements Callable<String> {
      * ApplicationService instance and boolean flag to specify if uploading to be performed without starting a batch run( introduced to simulate the
      * scenario where service methods are called in wrong order).
      * @param threadName
-     * @param numOfChunksToUpload
-     * @param numOfRecordsInAChunk
      * @param waitTimeToAquireLock
      * @param s
      * @param uploadChunksWithoutStart
      */
-    public ProducerThread(String threadName, int numOfChunksToUpload, int numOfRecordsInAChunk, int waitTimeToAquireLock, ApplicationService s, boolean uploadChunksWithoutStart){
+    public ProducerThread(String threadName, List<Chunk> chunkList, int waitTimeToAquireLock, int numOfRetries, ApplicationService s, boolean uploadChunksWithoutStart){
         this.producerThreadName = threadName;
-        this.numOfChunksToUpload = numOfChunksToUpload;
         this.applicationService = s;
+        this.chunkList = chunkList;
         this.waitTimeToAquireLock = waitTimeToAquireLock;
         this.uploadChunksWithoutStart = uploadChunksWithoutStart;
-        this.numOfRecordsInAChunk = numOfRecordsInAChunk;
+        this.numOfLockAquireRetries = numOfRetries;
     }
 
     /***
@@ -56,11 +54,12 @@ public class ProducerThread implements Callable<String> {
      */
     @Override
     public String call(){
+            int  numOfChunksToUpload = chunkList.size();
             if(uploadChunksWithoutStart == false) {
                     try {
-                        int numberOfRetries = 5;
+                        int numberOfRetries = numOfLockAquireRetries;
                         while (numberOfRetries > 0) {
-                            batchID = applicationService.startBatchRun(producerThreadName, waitTimeToAquireLock);
+                            batchID = applicationService.startBatchRun(producerThreadName);
                             if (Objects.isNull(batchID)) {
                                 log.error(producerThreadName + " has failed to start the batch run.It will wait for 1 second before retrying.");
                             } else {
@@ -70,57 +69,33 @@ public class ProducerThread implements Callable<String> {
                             numberOfRetries--;
                         }
                     } catch (InterruptedException e) {
-                        log.error("Producer thread " + producerThreadName + " interuppted while starting the batch run.");
+                        log.error("Producer thread " + producerThreadName + " interrupted while starting the batch run.");
+                        return "Batch run cannot be started due to an error: "+e.getMessage();
                     }
                 log.info(producerThreadName + " started the batch run");
                 log.info("Number of chunks to be uploaded: "+numOfChunksToUpload);
             }
 
+            int counter = 0;
             //start uploading the chunks
-            while(numOfChunksToUpload > 0){
-                Chunk chunk = generateChunk(numOfRecordsInAChunk);
-                //If error occurs while generating chunks , then producer will stop uploading
-                try {
-                    if(Objects.isNull(chunk)){
-                        applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "cancel");
-                        return "Batch Cancelled";
+            try {
+                    while(counter < numOfChunksToUpload){
+                        Chunk chunk = chunkList.get(counter);
+                        applicationService.uploadChunkOfRecords(batchID, chunk );
+                        counter++;
                     }
-
-                    applicationService.uploadChunkOfRecords(batchID, chunk);
-                }catch(UploadException ex){
-                    return "Batch Cancelled due to the error : "+ex.getMessage();
-                }
-                numOfChunksToUpload--;
+            }catch(UploadException ex){
+                applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "cancel");
+                applicationService = null;
+                return "Batch Cancelled due to an error : "+ex.getMessage();
             }
 
             //After uploading all the chunks, mark the batch run as complete
             applicationService.completeOrCancelBatchRun(batchID, producerThreadName, "complete");
-            return "Batch Completed";
+            applicationService = null;
+            return ProducerConstants.BATCH_COMPLETION_MESSAGE;
 
     }
 
-    /***
-     * generateChunk method is a custom chunk generator which generates random list of records.
-     * @param size - number of records in a chunk
-     * @return
-     */
-    private Chunk generateChunk(int size)  {
-        Random r = new Random();
-        String json = "";
-        ObjectMapper objectMapper = new ObjectMapper();
-        List<Record> recordList = new ArrayList<>();
-        while(size > 0){
-            json = "{ \"Price\" :"+ priceGenerator.nextDouble() * 100 +" }";
-            try {
-                recordList.add(new Record(String.valueOf(r.nextInt(10) + 1), LocalDateTime.now(), objectMapper.readTree(json)));
-            } catch (JsonProcessingException e) {
-                log.error("Issue with the chunk generation: "+e.getMessage());
-                return null;
-            }
-            size--;
-        }
-        log.info("Generated Chunk :");
-        recordList.forEach((record) -> log.info(record.toString()));
-        return new Chunk(recordList);
-    }
+
 }

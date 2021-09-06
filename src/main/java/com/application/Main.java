@@ -11,7 +11,7 @@ import java.util.concurrent.Future;
 
 public class Main {
     public static void main(String[] args) {
-        ApplicationService applicationService = new ApplicationService();
+        /*ApplicationService applicationService = new ApplicationService();
         ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<String> result = executorService.submit(new ProducerThread("Producer1",5, 20, 3, applicationService, false));
         while(true){
@@ -27,6 +27,6 @@ public class Main {
             e.printStackTrace();
         } catch (ExecutionException e) {
             e.printStackTrace();
-        }
+        }*/
     }
 }

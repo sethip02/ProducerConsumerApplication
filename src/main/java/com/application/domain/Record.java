@@ -14,11 +14,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class Record {
     //id represents instrument id
-    String id;
+    private String id;
     //asOf field represents the datetime when the price was updated
-    LocalDateTime asOf;
+    private LocalDateTime asOf;
     //payload represents the metadata about the update. price is one the metadata.
-    JsonNode payload;
+    private JsonNode payload;
 
     @Override
     public String toString() {

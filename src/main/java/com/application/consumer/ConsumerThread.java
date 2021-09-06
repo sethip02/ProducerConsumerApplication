@@ -1,5 +1,7 @@
 package com.application.consumer;
 
+import com.application.constants.ErrorConstants;
+import com.application.exception.PriceAccessException;
 import com.application.service.ApplicationService;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,12 +15,13 @@ import java.util.concurrent.Callable;
  */
 @Slf4j
 public class ConsumerThread implements Callable<String> {
-    ApplicationService applicationService;
-    String consumerThreadName = "Consumer " + Thread.currentThread().getName();
-    int randomInstrumentId;
+    private ApplicationService applicationService;
+    private String consumerThreadName;
+    private int instrumentId;
 
-    public ConsumerThread(int randomInstrumentId, ApplicationService applicationService) {
-        this.randomInstrumentId = randomInstrumentId;
+    public ConsumerThread(String consumerThreadName, int instrumentId, ApplicationService applicationService) {
+        this.consumerThreadName = consumerThreadName;
+        this.instrumentId = instrumentId;
         this.applicationService = applicationService;
     }
 
@@ -30,13 +33,22 @@ public class ConsumerThread implements Callable<String> {
     public String call() {
 
 
-        log.info("Accessing the id: " + randomInstrumentId);
+        log.info("Accessing the id: " + instrumentId);
         LocalDateTime start = LocalDateTime.now();
-        Double instrumentPrice = applicationService.getLatestPriceOfInstrument(consumerThreadName, String.valueOf(randomInstrumentId));
-        LocalDateTime end = LocalDateTime.now();
-        log.info("Latest price for instrument id " + randomInstrumentId + " is " + instrumentPrice);
-        log.info("Consumer " + consumerThreadName + " is able to access the price in " + Duration.between(start, end).toMillis() + " ms.");
-        return "Value of instrument " + randomInstrumentId + " is " + instrumentPrice;
+        String instrumentPrice = null;
+        try {
+            instrumentPrice = applicationService.getLatestPriceOfInstrument(consumerThreadName, String.valueOf(instrumentId));
+            LocalDateTime end = LocalDateTime.now();
+            log.info("Latest price for instrument id " + instrumentId + " is " + instrumentPrice);
+            log.info("Consumer " + consumerThreadName + " is able to access the price in " + Duration.between(start, end).toMillis() + " ms.");
+        }catch(PriceAccessException ex){
+            log.error(ErrorConstants.PRICE_ACCESS_EXCEPTION_MESSAGE +instrumentId+". Error message :"+ex.getMessage());
+            return null;
+        } catch (Exception e){
+            log.error("Exception occurred which accessing the latest price of instrumentId "+instrumentId+". Error message :"+e.getMessage());
+            return null;
+        }
+        return instrumentPrice;
 
     }
 }
