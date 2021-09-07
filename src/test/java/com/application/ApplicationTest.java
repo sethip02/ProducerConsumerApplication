@@ -5,6 +5,7 @@ import com.application.consumer.ConsumerThread;
 import com.application.domain.Chunk;
 import com.application.domain.Record;
 import com.application.domain.RecordComparator;
+import com.application.exception.UploadException;
 import com.application.producer.ProducerThread;
 import com.application.service.ApplicationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -25,6 +26,7 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 @Slf4j
@@ -35,6 +37,11 @@ public class ApplicationTest {
 
     private Random priceGenerator = new Random();
 
+
+    @Before
+    public void resetTheLatestPriceListBeforeEveryTest(){
+        ApplicationService.resetPriceList();
+    }
 
     /***
      * Test Description: Initializes one producer and one consumer thread.
@@ -103,36 +110,43 @@ public class ApplicationTest {
      * @throws InterruptedException
      */
     @Test
-    @Ignore
-    public void multipleProducerScenarioTest() throws InterruptedException {
-
+    public void multipleProducerScenarioTest() throws InterruptedException, JsonProcessingException, ExecutionException {
+        ObjectMapper objectMapper = new ObjectMapper();
         List<Chunk> chunkList1 = new ArrayList<>();
-        //generate chunks
-        int numOfChunksToUpload = 5;
-        while(numOfChunksToUpload > 0){
-            chunkList1.add(generateChunk(10));
-            numOfChunksToUpload--;
-        }
+        Chunk chunk = new Chunk();
+        chunk.setData(Arrays.asList(objectMapper.readValue("{\"id\":\"1\", \"asOf\":\"2021-09-07T21:26:57.202898400\", \"payload\":{\"Price\":20.139961889377744}}",Record.class),
+                        objectMapper.readValue("{\"id\":\"2\", \"asOf\":\"2021-09-07T09:26:57.265399700\", \"payload\":{\"Price\":70.14384608537513}}",Record.class)));
+        chunkList1.add(chunk);
         ExecutorService executorService = Executors.newFixedThreadPool(2);
-        ProducerThread producerThread1 = new ProducerThread("Producer1", chunkList1, 10, 0, new ApplicationService(), false);
+        ProducerThread producerThread1 = new ProducerThread("Producer1", chunkList1, 10, 4, new ApplicationService(), false);
 
-        List<Chunk> chunkList2 = new ArrayList<>();
-        //generate chunks
-        numOfChunksToUpload = 5;
-        while(numOfChunksToUpload > 0){
-            chunkList2.add(generateChunk(10));
-            numOfChunksToUpload--;
-        }
-
-        ProducerThread producerThread2 = new ProducerThread("Producer2", chunkList2, 10, 0, new ApplicationService(), false);
-        List<ProducerThread> threadList = Arrays.asList(producerThread1, producerThread2);
-        List<Future<String>> futureList = executorService.invokeAll(threadList);
+        Future<String> producerResult = executorService.submit(producerThread1);
         while (true) {
-            if (futureList.get(0).isDone() || futureList.get(1).isDone())
+            if (producerResult.isDone())
                 break;
         }
-        assertThat(logCaptor.getErrorLogs()).containsAnyOf("Producer1 has failed to start the batch run.It will wait for 1 second before retrying.", "Producer2 has failed to start the batch run.It will wait for 1 second before retrying.");
-        log.info("Multiple producer scenario completed successfully");
+        if (ProducerConstants.BATCH_COMPLETION_MESSAGE.equals(producerResult.get())) {
+            List<Chunk> chunkList2 = new ArrayList<>();
+            chunk.setData(Arrays.asList(objectMapper.readValue("{\"id\":\"1\", \"asOf\":\"2021-09-07T21:55:57.265399700\", \"payload\":{\"Price\":98.12933222921298}}",Record.class),
+                    objectMapper.readValue("{\"id\":\"2\", \"asOf\":\"2021-09-06T10:26:57.265399700\", \"payload\":{\"Price\":31.54355122981366}}",Record.class)));
+            chunkList2.add(chunk);
+            ProducerThread producerThread2 = new ProducerThread("Producer2", chunkList2, 10, 4, new ApplicationService(), false);
+
+            producerResult = executorService.submit(producerThread2);
+            while (true) {
+                if (producerResult.isDone())
+                    break;
+            }
+
+            if (ProducerConstants.BATCH_COMPLETION_MESSAGE.equals(producerResult.get())) {
+                Future<String> priceFromConsumer1 = executorService.submit(new ConsumerThread("Consumer1", 1, new ApplicationService()));
+                Future<String> priceFromConsumer2 = executorService.submit(new ConsumerThread("Consumer2", 2, new ApplicationService()));
+
+                assertEquals("98.12933222921298",priceFromConsumer1.get());
+                assertEquals("70.14384608537513",priceFromConsumer2.get());
+            }
+        }
+
         executorService.shutdown();
 
     }
@@ -143,8 +157,7 @@ public class ApplicationTest {
      * @throws ExecutionException
      * @throws InterruptedException
      */
-    @Test
-    @Ignore
+    @Test(expected = ExecutionException.class)
     public void callServiceMethodInWrongOrderTest() throws ExecutionException, InterruptedException {
         List<Chunk> chunkList = new ArrayList<>();
         //generate chunks
@@ -162,8 +175,27 @@ public class ApplicationTest {
         }
         log.info("Result : " + producerResult.get());
         executorService.shutdown();
-        assertTrue(producerResult.get().contains("Batch Cancelled due to the error"));
 
+
+
+    }
+
+    @Test
+    public void testConsumerAccessExceptionDuringBatchRun() throws ExecutionException, InterruptedException {
+        List<Chunk> chunkList = new ArrayList<>();
+        //generate chunks
+        int numOfChunksToUpload = 1000;
+        while(numOfChunksToUpload > 0){
+            chunkList.add(generateChunk(5));
+            numOfChunksToUpload--;
+        }
+
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        ProducerThread producerThread = new ProducerThread("Producer1", chunkList, 20, 5, new ApplicationService(), true);
+        Future<String> producerResult = executorService.submit(producerThread);
+        Future<String> priceFromConsumer = executorService.submit(new ConsumerThread("Consumer1", 1, new ApplicationService()));
+        //log.info("Price value: "+priceFromConsumer.get());
+        assertEquals(priceFromConsumer.get(), null);
 
     }
 
@@ -175,26 +207,22 @@ public class ApplicationTest {
      */
     @Test
     @Ignore
-    public void multipleProducerAndMultipleConsumerScenarioTest() throws InterruptedException {
+    public void multipleProducerAndMultipleConsumerScenarioTest() throws InterruptedException, JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
         List<Chunk> chunkList1 = new ArrayList<>();
-        //generate chunks
-        int numOfChunksToUpload = 5;
-        while(numOfChunksToUpload > 0){
-            chunkList1.add(generateChunk(10));
-            numOfChunksToUpload--;
-        }
+        Chunk chunk = new Chunk();
+        chunk.setData(Arrays.asList(objectMapper.readValue("{\"id\":\"1\", \"asOf\":\"2021-09-07T21:26:57.202898400\", \"payload\":{\"Price\":20.139961889377744}}",Record.class),
+                objectMapper.readValue("{\"id\":\"2\", \"asOf\":\"2021-09-07T09:26:57.265399700\", \"payload\":{\"Price\":70.14384608537513}}",Record.class)));
+        chunkList1.add(chunk);
         ExecutorService producerES = Executors.newFixedThreadPool(2);
         ProducerThread producerThread1 = new ProducerThread("Producer1", chunkList1, 100, 5, new ApplicationService(), false);
         Future<String> producerResult1 = producerES.submit(producerThread1);
 
 
         List<Chunk> chunkList2 = new ArrayList<>();
-        //generate chunks
-        numOfChunksToUpload = 5;
-        while(numOfChunksToUpload > 0){
-            chunkList2.add(generateChunk(10));
-            numOfChunksToUpload--;
-        }
+        chunk.setData(Arrays.asList(objectMapper.readValue("{\"id\":\"1\", \"asOf\":\"2021-09-07T21:55:57.265399700\", \"payload\":{\"Price\":98.12933222921298}}",Record.class),
+                objectMapper.readValue("{\"id\":\"2\", \"asOf\":\"2021-09-06T10:26:57.265399700\", \"payload\":{\"Price\":31.54355122981366}}",Record.class)));
+        chunkList2.add(chunk);
 
         ProducerThread producerThread2 = new ProducerThread("Producer2", chunkList2, 100, 5, new ApplicationService(), false);
         Future<String> producerResult2 = producerES.submit(producerThread2);

@@ -21,12 +21,15 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApplicationService {
     private static ReentrantLock reentrantLock = new ReentrantLock(true);;
-    private static List<UUID> activeBatchIDs = new ArrayList<>();
+    private static List<String> activeBatchIDs = new ArrayList<>();
     private RecordComparator recordComparator = new RecordComparator();
     private static Map<String, Record> originalPriceList = new ConcurrentHashMap<>();
     private Map<String, Record> cachedPriceList = new HashMap<>();
 
 
+    public static void resetPriceList(){
+        originalPriceList = new ConcurrentHashMap<>();
+    }
     /***
      * startBatchRun method is used by the producer thread to start a batch
      * A lock is acquired before starting a batch run.
@@ -37,9 +40,12 @@ public class ApplicationService {
     public UUID startBatchRun(String producerName) {
         log.info(producerName + " is starting a batch run.");
         UUID newBatchID = UUID.randomUUID();
-        activeBatchIDs.add(newBatchID);
+        activeBatchIDs.add(newBatchID.toString());
+        log.info("Size : "+activeBatchIDs.size());
         return newBatchID;
     }
+
+
 
     /***
      * uploadChunkOfRecords method is used to upload a chunk of records
@@ -50,8 +56,10 @@ public class ApplicationService {
      * @param chunk - list of records.
      */
     public void uploadChunkOfRecords(UUID batchId, Chunk chunk) {
-        if (! activeBatchIDs.contains(batchId)) {
-            throw new UploadException("Batch run with the id " + batchId + "is not active. Please check the UUID provided");
+        log.info("Upload chunk for batch run: "+batchId.toString());
+        log.info("Size : "+activeBatchIDs.size());
+        if (! (ApplicationService.activeBatchIDs.contains(batchId.toString()))) {
+            throw new UploadException("Batch run with the id " + batchId + " is not active. Please check the UUID provided");
         }
 
 
@@ -78,9 +86,9 @@ public class ApplicationService {
      * @return
      */
     public void completeOrCancelBatchRun(UUID batchId, String producerThreadName, String command) {
-
-        if (! activeBatchIDs.contains(batchId)) {
-            throw new UploadException("Batch run with the id " + batchId + "is not active. Please check the UUID provided");
+        log.info("Producer Name: "+producerThreadName + " ; "+ " Command: "+ command);
+        if (! (activeBatchIDs.contains(batchId.toString()))) {
+            throw new UploadException("Batch run with the id " + batchId + " is not active. Please check the UUID provided");
         }
         //Acquire a lock to update the original price list.
         reentrantLock.lock();
@@ -105,7 +113,7 @@ public class ApplicationService {
         originalPriceList.forEach((k, v) -> {
             log.info("Value of key " + k + " is " + v);
         });
-        activeBatchIDs.remove(batchId);
+        activeBatchIDs.remove(batchId.toString());
         reentrantLock.unlock();
     }
 
@@ -118,6 +126,7 @@ public class ApplicationService {
      */
     public String getLatestPriceOfInstrument(String consumerThreadName, String id) throws PriceAccessException {
         log.info("Consumer "+consumerThreadName+" is trying to access price of the instrument id: "+id);
+        log.info("Number of active batches: "+activeBatchIDs.size());
         if(activeBatchIDs.size() > 0){
             throw new PriceAccessException("Batch run is still under process. Please try accessing the value after sometime.");
         }

@@ -72,7 +72,7 @@ public class ProducerThread implements Callable<String> {
                         log.error("Producer thread " + producerThreadName + " interrupted while starting the batch run.");
                         return "Batch run cannot be started due to an error: "+e.getMessage();
                     }
-                log.info(producerThreadName + " started the batch run");
+                log.info(producerThreadName + " started the batch run with the batchID: " + batchID);
                 log.info("Number of chunks to be uploaded: "+numOfChunksToUpload);
             }
 
