@@ -12,9 +12,9 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
-public class ProducerThread implements Callable<String> {
+public class BadProducerThread implements Callable<String> {
 
-    private static final Logger log = LoggerFactory.getLogger(ProducerThread.class);
+    private static final Logger log = LoggerFactory.getLogger(BadProducerThread.class);
     private ApplicationService applicationService;
     private UUID batchID = UUID.randomUUID();
     private final List<Chunk> chunkList;
@@ -34,7 +34,7 @@ public class ProducerThread implements Callable<String> {
      * @param numOfRetries
      * @param s
      */
-    public ProducerThread(String threadName, List<Chunk> chunkList, int waitTimeToAquireLock, int numOfRetries, ApplicationService s) {
+    public BadProducerThread(String threadName, List<Chunk> chunkList, int waitTimeToAquireLock, int numOfRetries, ApplicationService s) {
         this.producerThreadName = threadName;
         this.applicationService = s;
         this.chunkList = chunkList;
@@ -52,22 +52,7 @@ public class ProducerThread implements Callable<String> {
     @Override
     public String call() {
         int numOfChunksToUpload = chunkList.size();
-        try {
-            int numberOfRetries = numOfLockAquireRetries;
-            while (numberOfRetries > 0) {
-                batchID = applicationService.startBatchRun(producerThreadName);
-                if (Objects.isNull(batchID)) {
-                    log.error(producerThreadName + " has failed to start the batch run.It will wait for 1 second before retrying.");
-                } else {
-                    break;
-                }
-                Thread.sleep(500);
-                numberOfRetries--;
-            }
-        } catch (InterruptedException e) {
-            log.error("Producer thread " + producerThreadName + " interrupted while starting the batch run.");
-            return "Batch run cannot be started due to an error: " + e.getMessage();
-        }
+
         log.info(producerThreadName + " started the batch run with the batchID: " + batchID);
         log.info("Number of chunks to be uploaded: " + numOfChunksToUpload);
 

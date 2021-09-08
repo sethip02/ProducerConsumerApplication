@@ -57,8 +57,7 @@ public class ApplicationService {
      */
     public void uploadChunkOfRecords(UUID batchId, Chunk chunk) {
         log.info("Upload chunk for batch run: "+batchId.toString());
-        log.info("Size : "+activeBatchIDs.size());
-        if (! (ApplicationService.activeBatchIDs.contains(batchId.toString()))) {
+        if (! (activeBatchIDs.contains(batchId.toString()))) {
             throw new UploadException("Batch run with the id " + batchId + " is not active. Please check the UUID provided");
         }
 
